@@ -79,46 +79,32 @@ ssize_t sys_user_exit(uint64 code) {
 
 //correct plus
 ssize_t sys_user_backtrace(uint64 depth) {
-    // 1. 获取初始栈帧
-    // 根据你的成功经验，这里的 fp 指向的是栈底 (Saved S0 所在位置)
-    uint64 fp = current->trapframe->regs.s0;
-    uint64 sp = current->trapframe->regs.sp; // 真实的栈底 sp
+    uint64 fp = current->trapframe->regs.s0; //栈底指针
+    //uint64 sp = current->trapframe->regs.sp; // 真实的栈底 sp
 
-    sprint("DEBUG VERIFY:\n");
-    sprint("regs.s0 = 0x%lx\n", fp);
-    sprint("regs.sp = 0x%lx\n", sp);
+    //sprint("DEBUG VERIFY:\n");
+    //sprint("regs.s0 = 0x%lx\n", fp);
+    //sprint("regs.sp = 0x%lx\n", sp);
     
-    if (fp == sp) {
-        sprint("Conclusion: s0 == sp (Pointing to Bottom)\n");
-    } else if (fp == sp + 16) {
-        sprint("Conclusion: s0 == sp + 16 (Pointing to Top)\n");
-    } else {
-        sprint("Conclusion: s0 = sp + %ld (Unknown Layout)\n", (long)fp - (long)sp);
-    }
-    // 2. 这里的 sp 仅仅作为一个临时变量，用来存 "Old S0" 的值
-    uint64 sp_val = 0; 
+    //if (fp == sp) {
+    //    sprint("Conclusion: s0 == sp (Pointing to Bottom)\n");
+    //} else if (fp == sp + 16) {
+    //    sprint("Conclusion: s0 == sp + 16 (Pointing to Top)\n");
+    //} else {
+    //    sprint("Conclusion: s0 = sp + %ld (Unknown Layout)\n", (long)fp - (long)sp);
+    //}
+    uint64 sp = 0; 
     uint64 ra = 0;
     uint64 current_depth = 0;
 
-    sprint("back trace the user app in the following:\n");
-
-    // 循环条件：深度限制 且 fp 不为 0
+    //sprint("back trace the user app in the following:\n");
     while (current_depth < depth && fp != 0) {
         
-        // ============================================
-        // A. 栈回溯逻辑 (采用你的成功逻辑)
-        // ============================================
-        // 1. 获取 Old S0 (保存的上一层栈帧指针)
-        sp_val = *(uint64*)fp; 
-        
-        // 2. 获取 RA (保存的返回地址)
-        // 既然 fp 指向栈底(0偏移)，而 ra 在 8偏移，所以是 fp+8
-        // 这将直接获取到 print_backtrace 返回 f8 的地址
+      //被调用函数的栈底为调用函数的栈顶
+        sp = *(uint64*)fp; 
+      //fp+8即sp+8
         ra = *(uint64*)(fp + 8);
 
-        // ============================================
-        // B. 符号查找逻辑 (采用我的优化版)
-        // ============================================
         int best_index = -1;
         // 查找最符合 ra 的符号
         for (int i = 0; i < elfloader.symbol_num; i++) {
@@ -128,19 +114,14 @@ ssize_t sys_user_backtrace(uint64 depth) {
             if ((symbol.info & 0xf) != STT_FUNC) continue;
             
             // 判断 ra 是否在函数范围内 [value, value + size)
-            // 这种写法比 pre_ra 更精准，不依赖符号表的顺序
             if (ra >= symbol.value) {
                  if (ra < symbol.value + symbol.size || symbol.size == 0) {
                      best_index = i;
-                     // 在 Lab1 这种简单环境下，找到一个符合的通常就是对的
                      break; 
                  }
             }
         }
 
-        // ============================================
-        // C. 打印与迭代
-        // ============================================
         if (best_index != -1) {
             char *name = elfloader.string_table + elfloader.symbols[best_index].name;
             sprint("%s\n", name);
@@ -148,10 +129,8 @@ ssize_t sys_user_backtrace(uint64 depth) {
         } else {
             sprint("0x%lx\n", ra);
         }
-
-        // 3. 计算下一层的 fp
-        // 根据你的逻辑：Next FP = Old S0 - 16
-        fp = sp_val - 16;
+        //分析栈帧结构可知所有函数的栈帧的大小均为16B
+        fp = sp - 16;
         
         current_depth++;
     }
