@@ -6,6 +6,11 @@
 
 #define MAX_CMDLINE_ARGS 64
 
+// buffer size
+#define MAX_SYMBOLS 512
+#define MAX_STRING_LENGTH 2048
+
+
 // elf header structure
 typedef struct elf_header_t {
   uint32 magic;
@@ -37,8 +42,41 @@ typedef struct elf_prog_header_t {
   uint64 align;  /* Segment alignment */
 } elf_prog_header;
 
+//.symtab data structure 符号表的表项
+typedef struct elf_symbol_t {
+    uint32 name;      // 符号名称在 .strtab 中的索引
+    unsigned char info;
+    unsigned char other;
+    uint16 shndx;
+    uint64 value;     // vitural address
+    uint64 size;      // Symbol length
+} elf_symbol;
+
+//Section header table表项
+typedef struct elf_section_header_t {
+    uint32 name;      // 节区名称在 .shstrtab 中的索引
+    uint32 type;      
+    uint64 flags;
+    uint64 addr;
+    uint64 offset;    
+    uint64 size;     
+    uint32 link;
+    uint32 info;
+    uint64 addralign;
+    uint64 entsize;
+} elf_section_header;
+
 #define ELF_MAGIC 0x464C457FU  // "\x7FELF" in little endian
 #define ELF_PROG_LOAD 1
+
+
+// 节类型常量
+#define SHT_SYMTAB 2  // .symtab
+#define SHT_STRTAB 3  // .strtab
+
+// 符号类型常量
+#define STT_FUNC 2    // function type
+
 
 typedef enum elf_status_t {
   EL_OK = 0,
@@ -50,9 +88,14 @@ typedef enum elf_status_t {
 
 } elf_status;
 
+//完善后的elf_ctx
 typedef struct elf_ctx_t {
   void *info;
   elf_header ehdr;
+//缓冲区
+  elf_symbol symbols[MAX_SYMBOLS];
+  char string_table[MAX_STRING_LENGTH];
+  uint64 symbol_num; // 记录读取到了多少个符号
 } elf_ctx;
 
 elf_status elf_init(elf_ctx *ctx, void *info);

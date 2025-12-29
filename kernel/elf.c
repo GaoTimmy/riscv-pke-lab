@@ -8,6 +8,10 @@
 #include "riscv.h"
 #include "spike_interface/spike_utils.h"
 
+
+// global 
+elf_ctx elfloader;
+
 typedef struct elf_info_t {
   spike_file_t *f;
   process *p;
@@ -50,6 +54,123 @@ elf_status elf_init(elf_ctx *ctx, void *info) {
 //
 // load the elf segments to memory regions as we are in Bare mode in lab1
 //
+/*elf_status elf_load(elf_ctx *ctx) {
+  // elf_prog_header structure is defined in kernel/elf.h
+  elf_prog_header ph_addr;
+  int i, off;
+
+  // traverse the elf program segment headers
+  for (i = 0, off = ctx->ehdr.phoff; i < ctx->ehdr.phnum; i++, off += sizeof(ph_addr)) {
+    // read segment headers
+    if (elf_fpread(ctx, (void *)&ph_addr, sizeof(ph_addr), off) != sizeof(ph_addr)) return EL_EIO;
+
+    if (ph_addr.type != ELF_PROG_LOAD) continue;
+    if (ph_addr.memsz < ph_addr.filesz) return EL_ERR;
+    if (ph_addr.vaddr + ph_addr.memsz < ph_addr.vaddr) return EL_ERR;
+
+    // allocate memory block before elf loading
+    void *dest = elf_alloc_mb(ctx, ph_addr.vaddr, ph_addr.vaddr, ph_addr.memsz);
+
+    // actual loading
+    if (elf_fpread(ctx, dest, ph_addr.memsz, ph_addr.off) != ph_addr.memsz)
+      return EL_EIO;
+  }
+
+  //初始化一个Section Head
+    elf_section_header sh_addr;
+  
+  //.strtab缓冲区使用长度
+    uint64 string_length = 0;
+
+  //遍历所有的Section Heads
+    for(i = 0, off = ctx->ehdr.shoff; i < ctx->ehdr.shnum; i++, off += sizeof(sh_addr)) {
+
+      //read heads
+      if (elf_fpread(ctx, (void*)&sh_addr, sizeof(sh_addr), off) != sizeof(sh_addr)) return EL_EIO;
+
+      //.symtab
+      if (sh_addr.type == SHT_SYMTAB) {
+        //检查溢出
+        if (sh_addr.size > sizeof(ctx->symbols)) {
+          //截断，剩余多少空间则读取多少长度
+          sh_addr.size = sizeof(ctx->symbols);
+        }
+
+        //读取symbols
+        if (elf_fpread(ctx, ctx->symbols, sh_addr.size, sh_addr.offset) != sh_addr.size) return EL_EIO;
+
+        ctx->symbol_num = sh_addr.size / sizeof(elf_symbol);
+      }
+
+      //.strtab
+      else if (sh_addr.type == SHT_STRTAB) {
+        if (i != ctx->ehdr.shstrndx) {
+          if (sh_addr.size > sizeof(ctx->string_table)) {
+            continue;
+          }
+        }
+        if (elf_fpread(ctx, ctx->string_table, sh_addr.size, sh_addr.offset) != sh_addr.size) return EL_EIO;
+
+          string_length += sh_addr.size;
+      }
+    }
+
+  return EL_OK;
+}*/
+
+
+/*elf_status elf_load(elf_ctx *ctx) {
+  elf_prog_header ph_addr;
+  int i, off;
+
+  // 1. 加载程序段 (保持原样，千万别删)
+  for (i = 0, off = ctx->ehdr.phoff; i < ctx->ehdr.phnum; i++, off += sizeof(ph_addr)) {
+    if (elf_fpread(ctx, (void *)&ph_addr, sizeof(ph_addr), off) != sizeof(ph_addr)) return EL_EIO;
+    if (ph_addr.type != ELF_PROG_LOAD) continue;
+    if (ph_addr.memsz < ph_addr.filesz) return EL_ERR;
+    if (ph_addr.vaddr + ph_addr.memsz < ph_addr.vaddr) return EL_ERR;
+    void *dest = elf_alloc_mb(ctx, ph_addr.vaddr, ph_addr.vaddr, ph_addr.memsz);
+    if (elf_fpread(ctx, dest, ph_addr.memsz, ph_addr.off) != ph_addr.memsz) return EL_EIO;
+  }
+
+  // 2. 加载符号表和对应的字符串表 (精准版)
+  elf_section_header sh_addr;
+  
+  for (i = 0, off = ctx->ehdr.shoff; i < ctx->ehdr.shnum; i++, off += sizeof(sh_addr)) {
+    // 读取节头
+    if (elf_fpread(ctx, (void *)&sh_addr, sizeof(sh_addr), off) != sizeof(sh_addr)) return EL_EIO;
+
+    // 只要找到了符号表 (SHT_SYMTAB)
+    if (sh_addr.type == SHT_SYMTAB) {
+        
+        // A. 读取符号表数据
+        if (sh_addr.size > sizeof(ctx->symbols)) sh_addr.size = sizeof(ctx->symbols);
+        if (elf_fpread(ctx, ctx->symbols, sh_addr.size, sh_addr.offset) != sh_addr.size) return EL_EIO;
+        ctx->symbol_num = sh_addr.size / sizeof(elf_symbol);
+
+        // B. 【关键修改】顺藤摸瓜，直接读取它绑定的字符串表
+        // sh_link 字段记录了对应字符串表在 Section Header Table 中的索引
+        int strtab_index = sh_addr.link;
+        
+        // 计算那个字符串表头的偏移量
+        uint64 strtab_header_off = ctx->ehdr.shoff + strtab_index * sizeof(elf_section_header);
+        
+        // 读取那个字符串表的 Header
+        elf_section_header strtab_sh;
+        if (elf_fpread(ctx, &strtab_sh, sizeof(strtab_sh), strtab_header_off) != sizeof(strtab_sh)) return EL_EIO;
+        
+        // 读取字符串表数据到 string_table
+        if (strtab_sh.size > sizeof(ctx->string_table)) strtab_sh.size = sizeof(ctx->string_table);
+        if (elf_fpread(ctx, ctx->string_table, strtab_sh.size, strtab_sh.offset) != strtab_sh.size) return EL_EIO;
+        
+        // 既然找到并加载了，任务完成，可以提前退出循环（避免被后面的其他表覆盖）
+        // break; // 如果你不放心后面还有其他段要处理，可以不加 break
+    }
+  }
+
+  return EL_OK;
+}*/
+
 elf_status elf_load(elf_ctx *ctx) {
   // elf_prog_header structure is defined in kernel/elf.h
   elf_prog_header ph_addr;
@@ -70,6 +191,43 @@ elf_status elf_load(elf_ctx *ctx) {
     // actual loading
     if (elf_fpread(ctx, dest, ph_addr.memsz, ph_addr.off) != ph_addr.memsz)
       return EL_EIO;
+  }
+
+  //初始化一个Section Head
+  elf_section_header sh_addr;
+  
+  //遍历所有的Section Heads
+  for(i = 0, off = ctx->ehdr.shoff; i < ctx->ehdr.shnum; i++, off += sizeof(sh_addr)) {
+
+    //read heads
+    if (elf_fpread(ctx, (void*)&sh_addr, sizeof(sh_addr), off) != sizeof(sh_addr)) return EL_EIO;
+
+    //.symtab
+    if (sh_addr.type == SHT_SYMTAB) {
+      //检查溢出
+      if (sh_addr.size > sizeof(ctx->symbols)) {
+        //截断，剩余多少空间则读取多少长度
+        sh_addr.size = sizeof(ctx->symbols);
+      }
+
+      //读取symbols
+      if (elf_fpread(ctx, ctx->symbols, sh_addr.size, sh_addr.offset) != sh_addr.size) return EL_EIO;
+
+      ctx->symbol_num = sh_addr.size / sizeof(elf_symbol);
+
+      //读取对应的strtab
+      int strtab_index = sh_addr.link;
+      uint64 strtab_header_off = ctx->ehdr.shoff + strtab_index * sizeof(elf_section_header);
+      elf_section_header strtab_sh;
+      
+      if (elf_fpread(ctx, &strtab_sh, sizeof(strtab_sh), strtab_header_off) != sizeof(strtab_sh)) return EL_EIO;
+
+      if (strtab_sh.size > sizeof(ctx->string_table)) {
+         strtab_sh.size = sizeof(ctx->string_table);
+      }
+      
+      if (elf_fpread(ctx, ctx->string_table, strtab_sh.size, strtab_sh.offset) != strtab_sh.size) return EL_EIO;
+    }
   }
 
   return EL_OK;
@@ -114,7 +272,8 @@ void load_bincode_from_host_elf(process *p) {
   sprint("Application: %s\n", arg_bug_msg.argv[0]);
 
   //elf loading. elf_ctx is defined in kernel/elf.h, used to track the loading process.
-  elf_ctx elfloader;
+  //----------------------------global---------------------------
+  //elf_ctx elfloader;
   // elf_info is defined above, used to tie the elf file and its corresponding process.
   elf_info info;
 
