@@ -68,7 +68,16 @@ void handle_user_page_fault(uint64 mcause, uint64 sepc, uint64 stval) {
       
       //stval（存放的是发生缺页异常时，程序想要访问的逻辑地址
       // 将stval+PGSIZE与新页alloc_page()+PGSIZE建立映射
-      map_pages(current->pagetable, ROUNDDOWN(stval, PGSIZE), PGSIZE, (uint64)alloc_page(), prot_to_type(PROT_READ | PROT_WRITE, 1));
+      //lab2_3
+      //map_pages(current->pagetable, ROUNDDOWN(stval, PGSIZE), PGSIZE, (uint64)alloc_page(), prot_to_type(PROT_READ | PROT_WRITE, 1));
+      
+      //challenge1
+      if(stval >= g_ufree_page && stval <= g_ufree_page+4){
+        sprint("this address is not available!\n");
+        shutdown(-1);
+      } else {
+        map_pages(current->pagetable, ROUNDDOWN(stval, PGSIZE), PGSIZE, (uint64)alloc_page(), prot_to_type(PROT_READ | PROT_WRITE, 1));
+      }
       break;
     default:
       sprint("unknown page fault.\n");
