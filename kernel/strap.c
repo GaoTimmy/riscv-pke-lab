@@ -16,7 +16,8 @@
 //
 // handling the syscalls. will call do_syscall() defined in kernel/syscall.c
 //
-static void handle_syscall(trapframe *tf) {
+static void handle_syscall(trapframe *tf)
+{
   // tf->epc points to the address that our computer will jump to after the trap handling.
   // for a syscall, we should return to the NEXT instruction after its handling.
   // in RV64G, each instruction occupies exactly 32 bits (i.e., 4 Bytes)
@@ -27,13 +28,8 @@ static void handle_syscall(trapframe *tf) {
   // IMPORTANT: return value should be returned to user app, or else, you will encounter
   // problems in later experiments!
 
-  //panic( "call do_syscall to accomplish the syscall and lab1_1 here.\n" );
-  long return_value=do_syscall(tf->regs.a0,tf->regs.a1,tf->regs.a2,tf->regs.a3,tf->regs.a4,tf->regs.a5,tf->regs.a6,tf->regs.a7);
-
-  //RISC-V specifies that function return values ​​are stored in the a0 register.  
-  // Currently, the a0 register is still in kernel mode,
-  // so it needs to be modified within the trapframe where it is temporarily stored.
-  tf->regs.a0=return_value;
+  // panic( "call do_syscall to accomplish the syscall and lab1_1 here.\n" );
+  tf->regs.a0 = do_syscall(tf->regs.a0, tf->regs.a1, tf->regs.a2, tf->regs.a3, tf->regs.a4, tf->regs.a5, tf->regs.a6, tf->regs.a7);
 }
 
 //
@@ -42,14 +38,16 @@ static uint64 g_ticks = 0;
 //
 // added @lab1_3
 //
-void handle_mtimer_trap() {
+void handle_mtimer_trap()
+{
   sprint("Ticks %d\n", g_ticks);
   // TODO (lab1_3): increase g_ticks to record this "tick", and then clear the "SIP"
   // field in sip register.
   // hint: use write_csr to disable the SIP_SSIP bit in sip.
-  //panic( "lab1_3: increase g_ticks by one, and clear SIP field in sip register.\n" );
+
+  // panic( "lab1_3: increase g_ticks by one, and clear SIP field in sip register.\n" );
   g_ticks++;
-  write_csr(sip,read_csr(sip) & ~SIP_SSIP);
+  write_csr(sip, 0);
 }
 
 //
@@ -57,43 +55,45 @@ void handle_mtimer_trap() {
 // sepc: the pc when fault happens;
 // stval: the virtual address that causes pagefault when being accessed.
 //
-void handle_user_page_fault(uint64 mcause, uint64 sepc, uint64 stval) {
+void handle_user_page_fault(uint64 mcause, uint64 sepc, uint64 stval)
+{
   sprint("handle_page_fault: %lx\n", stval);
-  switch (mcause) {
-    case CAUSE_STORE_PAGE_FAULT:
-      // TODO (lab2_3): implement the operations that solve the page fault to
-      // dynamically increase application stack.
-      // hint: first allocate a new physical page, and then, maps the new page to the
-      // virtual address that causes the page fault.
-      //panic( "You need to implement the operations that actually handle the page fault in lab2_3.\n" );
-      
-      //stval（存放的是发生缺页异常时，程序想要访问的逻辑地址
-      // 将stval+PGSIZE与新页alloc_page()+PGSIZE建立映射
-      map_pages(current->pagetable, ROUNDDOWN(stval, PGSIZE), PGSIZE, (uint64)alloc_page(), prot_to_type(PROT_READ | PROT_WRITE, 1));
-      break;
-    default:
-      sprint("unknown page fault.\n");
-      break;
+  switch (mcause)
+  {
+  case CAUSE_STORE_PAGE_FAULT:
+    // TODO (lab2_3): implement the operations that solve the page fault to
+    // dynamically increase application stack.
+    // hint: first allocate a new physical page, and then, maps the new page to the
+    // virtual address that causes the page fault.
+
+    // panic( "You need to implement the operations that actually handle the page fault in lab2_3.\n" );
+    map_pages(current->pagetable, ROUNDDOWN(stval, PGSIZE), PGSIZE, (uint64)alloc_page(), prot_to_type(PROT_READ | PROT_WRITE, 1));
+
+    break;
+  default:
+    sprint("unknown page fault.\n");
+    break;
   }
 }
 
 //
 // implements round-robin scheduling. added @lab3_3
 //
-void rrsched() {
+void rrsched()
+{
   // TODO (lab3_3): implements round-robin scheduling.
   // hint: increase the tick_count member of current process by one, if it is bigger than
   // TIME_SLICE_LEN (means it has consumed its time slice), change its status into READY,
   // place it in the rear of ready queue, and finally schedule next process to run.
-  //panic( "You need to further implement the timer handling in lab3_3.\n" );
+  // panic( "You need to further implement the timer handling in lab3_3.\n" );
+
   current->tick_count++;
-  if( current->tick_count >= TIME_SLICE_LEN ){
-    current->tick_count = 0;
+  if (TIME_SLICE_LEN <= current->tick_count)
+  {
     current->status = READY;
-    insert_to_ready_queue( current );
+    current->tick_count = 0;
+    insert_to_ready_queue(current);
     schedule();
-  } else{
-    return;
   }
 }
 
@@ -101,10 +101,12 @@ void rrsched() {
 // kernel/smode_trap.S will pass control to smode_trap_handler, when a trap happens
 // in S-mode.
 //
-void smode_trap_handler(void) {
+void smode_trap_handler(void)
+{
   // make sure we are in User mode before entering the trap handling.
   // we will consider other previous case in lab1_3 (interrupt).
-  if ((read_csr(sstatus) & SSTATUS_SPP) != 0) panic("usertrap: not from user mode");
+  if ((read_csr(sstatus) & SSTATUS_SPP) != 0)
+    panic("usertrap: not from user mode");
 
   assert(current);
   // save user process counter.
