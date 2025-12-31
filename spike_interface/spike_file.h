@@ -6,6 +6,7 @@
 
 #include "util/types.h"
 
+// PKE为一个hostfs所设计的“定位信息”即为spike_file_t结构体，首地址被保存在vinode的i_fs_info字段中
 typedef struct file_t {
   int kfd;  // file descriptor of the host file
   uint32 refcnt;
