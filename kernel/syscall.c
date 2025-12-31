@@ -16,6 +16,8 @@
 
 #include "spike_interface/spike_utils.h"
 
+extern process procs[NPROC];
+extern process* ready_queue_head;
 //
 // implement the SYS_user_print syscall
 //
@@ -100,6 +102,63 @@ ssize_t sys_user_yield() {
 }
 
 //
+// kernel entry of wait.. added @ lab3_challenge1
+
+ssize_t sys_user_wait(int64 pid) {
+  //sprint("111\n");
+  if(pid > NPROC || pid == 0 || pid < -1) {
+    return -1;
+  } 
+  //sprint("222\n");
+  while(1) {
+
+    int flag = 0;
+    for (int i=0; i < NPROC; i++) {
+      process *p=&procs[i];
+
+      if (p->status == FREE) continue;
+      //sprint("333\n");
+      if (p->parent == current) {
+        if (pid == -1 || p->pid == pid) {
+          flag = 1;
+          if (p->status == ZOMBIE) {
+            int return_pid = p->pid;
+            p->status = FREE;
+            p->parent = NULL;
+            return return_pid;
+          }
+        }
+      }
+    }
+    if (flag) {
+      current->status = BLOCKED;
+      schedule();
+    } else {
+      return -1;
+    }
+  }
+}
+/*ssize_t sys_user_wait(int64 pid) {
+  //THIS_IS_A_SYNTAX_ERROR!!!!;
+  sprint("111\n");
+  if(pid > NPROC || pid == 0 || pid < -1) panic("pid is illegal!\n");
+
+
+  for(process *p = ready_queue_head;;p = p->queue_next) {
+    if(p->pid == pid || pid == -1) {
+      current->status = BLOCKED;
+      schedule();
+      break;
+    }
+    
+    if(p->queue_next == NULL) {
+      break;
+    }
+  }
+  return 0;
+}*/
+
+//
 // [a0]: the syscall number; [a1] ... [a7]: arguments to the syscalls.
 // returns the code of success, (e.g., 0 means success, fail for otherwise)
 //
@@ -118,6 +177,8 @@ long do_syscall(long a0, long a1, long a2, long a3, long a4, long a5, long a6, l
       return sys_user_fork();
     case SYS_user_yield:
       return sys_user_yield();
+    case SYS_user_wait:
+      return sys_user_wait(a1);
     default:
       panic("Unknown syscall %ld \n", a0);
   }

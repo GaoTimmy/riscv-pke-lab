@@ -164,6 +164,10 @@ int free_process( process* proc ) {
   // but for proxy kernel, it (memory leaking) may NOT be a really serious issue,
   // as it is different from regular OS, which needs to run 7x24.
   proc->status = ZOMBIE;
+  if (proc->parent && proc->parent->status == BLOCKED) {
+    proc->parent->status = READY;
+    insert_to_ready_queue(proc->parent);
+  }
 
   return 0;
 }
@@ -235,15 +239,26 @@ int do_fork( process* parent)
         sprint("start mapping code segment\n");
         uint64 size = parent->mapped_info[i].npages * PGSIZE;
         uint64 va = parent->mapped_info[i].va;
-        uint64 pa = lookup_pa(parent->pagetable, va);
-        map_pages((pagetable_t)child->pagetable, va, size, pa,
-          prot_to_type(PROT_READ | PROT_EXEC, 1));
+        uint64 pa = lookup_pa((pagetable_t)parent->pagetable, va);
+        map_pages((pagetable_t)child->pagetable, va, size, pa, prot_to_type(PROT_READ | PROT_EXEC, 1));
         //user_vm_map((pagetable_t)child->pagetable, va, size, pa,prot_to_type(PROT_READ | PROT_EXEC, 1));
         // after mapping, register the vm region (do not delete codes below!)
         child->mapped_info[child->total_mapped_region].va = parent->mapped_info[i].va;
         child->mapped_info[child->total_mapped_region].npages =
           parent->mapped_info[i].npages;
         child->mapped_info[child->total_mapped_region].seg_type = CODE_SEGMENT;
+        child->total_mapped_region++;
+        break;
+      case DATA_SEGMENT:
+        sprint("start mapping data segment\n");
+        for (int j = 0; j < parent->mapped_info[i].npages; j++) {
+          void *child_page = alloc_page();
+          memcpy(child_page, (void *)(lookup_pa((pagetable_t)parent->pagetable, parent->mapped_info[i].va + j * PGSIZE)), PGSIZE);
+          map_pages((pagetable_t)child->pagetable, parent->mapped_info[i].va + j * PGSIZE, PGSIZE, (uint64)child_page, prot_to_type(PROT_READ | PROT_WRITE, 1));
+        }
+        child->mapped_info[child->total_mapped_region].va =parent->mapped_info[i].va;
+        child->mapped_info[child->total_mapped_region].npages = parent->mapped_info[i].npages;
+        child->mapped_info[child->total_mapped_region].seg_type = DATA_SEGMENT;
         child->total_mapped_region++;
         break;
     }
