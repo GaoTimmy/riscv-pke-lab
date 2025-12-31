@@ -20,6 +20,7 @@ int main(int argc, char *argv[]) {
 
   close(fd);
 
+  
   printu("\n======== Test 2: create/write rfs file ========\n");
   printu("write: /RAMDISK0/ramfile\n");
 
