@@ -41,6 +41,7 @@ int vfs_closedir(struct file *file);
 extern struct dentry *vfs_root_dentry;
 
 // vfs abstract dentry
+// 文件名，目录层级关系
 struct dentry {
   char name[MAX_DENTRY_NAME_LEN];
   int d_ref;
@@ -112,12 +113,17 @@ struct super_block {
   int size;               // size of file system image (blocks)
   int nblocks;            // number of data blocks
   int ninodes;            // number of inodes.
+
+  // 指向该文件系统根目录所在的dentry
   struct dentry *s_root;  // root dentry of inode
+  
+  // 指向该文件系统所在的设备
   struct device *s_dev;   // device of the superblock
   void *s_fs_info;        // filesystem-specific info. for rfs, it points bitmap
 };
 
 // abstract vfs inode
+// 文件访问和文件操作的核心对象
 struct vinode {
   int inum;                  // inode number of the disk inode
   int ref;                   // reference count
@@ -127,6 +133,7 @@ struct vinode {
   int blocks;                // number of blocks
   int addrs[DIRECT_BLKNUM];  // direct blocks
   void *i_fs_info;           // filesystem-specific info (see s_fs_info)
+  //超级块唯一确定了vinode对应的文件系统
   struct super_block *sb;          // super block of the vfs inode
   const struct vinode_ops *i_ops;  // vfs inode operations
 };
