@@ -27,7 +27,7 @@ extern void return_to_user(trapframe *, uint64 satp);
 extern char trap_sec_start[];
 
 // process pool. added @lab3_1
-process procs[NPROC]; //线程池
+process procs[NPROC];
 
 // current points to the currently running user-mode application.
 process* current = NULL;
@@ -180,6 +180,7 @@ int do_fork( process* parent)
   sprint( "will fork a child from parent %d.\n", parent->pid );
   process* child = alloc_process();
 
+  // 拷贝父进程的逻辑地址空间到其子进程
   for( int i=0; i<parent->total_mapped_region; i++ ){
     // browse parent's vm space, and copy its trapframe and data segments,
     // map its code segment.
@@ -193,7 +194,7 @@ int do_fork( process* parent)
         break;
       case HEAP_SEGMENT:
         // build a same heap for child process.
-
+        0;
         // convert free_pages_address into a filter to skip reclaimed blocks in the heap
         // when mapping the heap blocks
         int free_block_filter[MAX_HEAP_PAGES];
@@ -221,7 +222,7 @@ int do_fork( process* parent)
         // copy the heap manager from parent to child
         memcpy((void*)&child->user_heap, (void*)&parent->user_heap, sizeof(parent->user_heap));
         break;
-      case CODE_SEGMENT:  //代码段，read only，不需要copy，直接映射即可
+      case CODE_SEGMENT:
         // TODO (lab3_1): implment the mapping of child code segment to parent's
         // code segment.
         // hint: the virtual address mapping of code segment is tracked in mapped_info
@@ -231,14 +232,15 @@ int do_fork( process* parent)
         // address region of child to the physical pages that actually store the code
         // segment of parent process.
         // DO NOT COPY THE PHYSICAL PAGES, JUST MAP THEM.
-        //panic( "You need to implement the code segment mapping of child in lab3_1.\n" );
         sprint("start mapping code segment\n");
-        uint64 size = parent->mapped_info[i].npages * PGSIZE;
-        uint64 va = parent->mapped_info[i].va;
-        uint64 pa = lookup_pa(parent->pagetable, va);
-        map_pages((pagetable_t)child->pagetable, va, size, pa,
-          prot_to_type(PROT_READ | PROT_EXEC, 1));
-        //user_vm_map((pagetable_t)child->pagetable, va, size, pa,prot_to_type(PROT_READ | PROT_EXEC, 1));
+        
+        uint64 size = parent->mapped_info[i].npages * PGSIZE; // size 变量表示当前页的大小
+        uint64 va = parent->mapped_info[i].va; // va 变量表示当前页的虚拟地址
+        uint64 pa = lookup_pa(parent->pagetable, va); // pa 变量表示当前页的物理地址，pagetable表示父进程的页表，lookup_pa函数用于查找虚拟地址对应的物理地址
+        int permit = prot_to_type(PROT_EXEC | PROT_READ, 1); // permit 变量表示当前页的权限        
+        user_vm_map(child->pagetable, va, size, pa, permit); // 将父进程的代码段映射到子进程的代码段
+        
+        
         // after mapping, register the vm region (do not delete codes below!)
         child->mapped_info[child->total_mapped_region].va = parent->mapped_info[i].va;
         child->mapped_info[child->total_mapped_region].npages =
@@ -246,6 +248,8 @@ int do_fork( process* parent)
         child->mapped_info[child->total_mapped_region].seg_type = CODE_SEGMENT;
         child->total_mapped_region++;
         break;
+        
+        
     }
   }
 
@@ -255,4 +259,39 @@ int do_fork( process* parent)
   insert_to_ready_queue( child );
 
   return child->pid;
+}
+semaphore_t g_sem_pool[MAX_SEM];
+int sem_num = 0;
+
+int sema_new(int val) {
+  int id = sem_num;
+  sem_num++;
+  g_sem_pool[id].value = val;
+  g_sem_pool[id].queue = NULL;
+  return id;
+}
+
+void sema_P(int id) {
+  g_sem_pool[id].value--;
+  if (g_sem_pool[id].value < 0) {
+    current->status = BLOCKED;
+    // 将当前进程插入到信号量的等待队列中，转调度
+    current->queue_next = g_sem_pool[id].queue;
+    g_sem_pool[id].queue = current;
+    schedule();
+  }
+}
+
+void sema_V(int id) {
+  g_sem_pool[id].value++;
+  // 如果信号量的值小于或等于 0，唤醒等待的进程
+  if (g_sem_pool[id].value <= 0) {
+    // 从等待队列中取出一个进程
+    process* p = g_sem_pool[id].queue;
+    // 更新等待队列的头部
+    g_sem_pool[id].queue = p->queue_next;
+    // 将进程状态设置为 READY，并加入到就绪队列中
+    p->status = READY;
+    insert_to_ready_queue(p);
+  }
 }

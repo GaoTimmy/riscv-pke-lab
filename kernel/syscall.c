@@ -89,13 +89,25 @@ ssize_t sys_user_yield() {
   // hint: the functionality of yield is to give up the processor. therefore,
   // we should set the status of currently running process to READY, insert it in
   // the rear of ready queue, and finally, schedule a READY process to run.
-  //panic( "You need to implement the yield syscall in lab3_2.\n" );
-  
-  // set current process to READY and insert it to ready queue
-  current->status = READY;
-  insert_to_ready_queue( current );
-  // schedule another process to run
-  schedule();
+  // lab3_2 added, just like sys_user_exit
+  current->status = READY; // 从running状态变为ready状态
+  insert_to_ready_queue(current); // 将当前进程插入到就绪队列的尾部
+  schedule(); // 调度下一个进程
+
+  return 0;
+}
+
+ssize_t sys_sem_new(int val) {
+  return sema_new(val);
+}
+
+ssize_t sys_sem_P(int id) {
+  sema_P(id);
+  return 0;
+}
+
+ssize_t sys_sem_V(int id) {
+  sema_V(id);
   return 0;
 }
 
@@ -118,6 +130,12 @@ long do_syscall(long a0, long a1, long a2, long a3, long a4, long a5, long a6, l
       return sys_user_fork();
     case SYS_user_yield:
       return sys_user_yield();
+    case SYS_user_semnew:
+      return sys_sem_new(a1);
+    case SYS_user_semp:
+      return sys_sem_P(a1);
+    case SYS_user_semv:
+      return sys_sem_V(a1);
     default:
       panic("Unknown syscall %ld \n", a0);
   }

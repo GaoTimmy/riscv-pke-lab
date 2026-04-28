@@ -76,3 +76,16 @@ int fork() {
 void yield() {
   do_user_call(SYS_user_yield, 0, 0, 0, 0, 0, 0, 0);
 }
+
+//Author: Gao Xiaoyang
+int sem_new(int val) {
+  return do_user_call(SYS_user_semnew, val, 0, 0, 0, 0, 0, 0);
+}
+
+void sem_P(int id) {
+  do_user_call(SYS_user_semp, id, 0, 0, 0, 0, 0, 0);
+}
+
+void sem_V(int id) {
+  do_user_call(SYS_user_semv, id, 0, 0, 0, 0, 0, 0);
+}

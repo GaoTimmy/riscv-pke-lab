@@ -19,10 +19,11 @@ typedef struct trapframe_t {
 }trapframe;
 
 // riscv-pke kernel supports at most 32 processes
-#define NPROC 32 //线程池的最大线程数
+#define NPROC 32
 // maximum number of pages in a process's heap
 #define MAX_HEAP_PAGES 32
-
+// maximum number of semaphores
+#define MAX_SEM 32
 // possible status of a process
 enum proc_status {
   FREE,            // unused state
@@ -90,6 +91,18 @@ typedef struct process_t {
   // accounting. added @lab3_3
   int tick_count;
 }process;
+
+typedef struct semaphore_t {
+  int value;
+  process* queue;   
+}semaphore_t;
+
+
+int sema_new(int val);
+
+void sema_P(int id);
+
+void sema_V(int id);
 
 // switch to run user app
 void switch_to(process*);
