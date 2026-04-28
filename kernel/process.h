@@ -20,7 +20,7 @@ typedef struct trapframe_t {
 }trapframe;
 
 // riscv-pke kernel supports at most 32 processes
-#define NPROC 32 //线程池的最大线程数
+#define NPROC 32
 // maximum number of pages in a process's heap
 #define MAX_HEAP_PAGES 32
 
@@ -102,6 +102,9 @@ void switch_to(process*);
 void init_proc_pool();
 // allocate an empty process, init its vm space. returns its pid
 process* alloc_process();
+// reset a process, reclaim its vm space and reset its status
+//Gao Xiaoyangggggggggggggg
+process *reset_process(process *p);
 // reclaim a process, destruct its vm space and free physical pages.
 int free_process( process* proc );
 // fork a child from parent

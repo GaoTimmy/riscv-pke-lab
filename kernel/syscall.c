@@ -14,17 +14,18 @@
 #include "vmm.h"
 #include "sched.h"
 #include "proc_file.h"
-
+#include "syscall.h"
 #include "spike_interface/spike_utils.h"
-
+#include "elf.h"
 //
 // implement the SYS_user_print syscall
 //
-ssize_t sys_user_print(const char* buf, size_t n) {
+ssize_t sys_user_print(const char *buf, size_t n)
+{
   // buf is now an address in user space of the given app's user stack,
   // so we have to transfer it into phisical address (kernel is running in direct mapping).
-  assert( current );
-  char* pa = (char*)user_va_to_pa((pagetable_t)(current->pagetable), (void*)buf);
+  assert(current);
+  char *pa = (char *)user_va_to_pa((pagetable_t)(current->pagetable), (void *)buf);
   sprint(pa);
   return 0;
 }
@@ -32,10 +33,11 @@ ssize_t sys_user_print(const char* buf, size_t n) {
 //
 // implement the SYS_user_exit syscall
 //
-ssize_t sys_user_exit(uint64 code) {
+ssize_t sys_user_exit(uint64 code)
+{
   sprint("User exit with code:%d.\n", code);
   // reclaim the current process, and reschedule. added @lab3_1
-  free_process( current );
+  free_process(current);
   schedule();
   return 0;
 }
@@ -43,15 +45,19 @@ ssize_t sys_user_exit(uint64 code) {
 //
 // maybe, the simplest implementation of malloc in the world ... added @lab2_2
 //
-uint64 sys_user_allocate_page() {
-  void* pa = alloc_page();
+uint64 sys_user_allocate_page()
+{
+  void *pa = alloc_page();
   uint64 va;
   // if there are previously reclaimed pages, use them first (this does not change the
   // size of the heap)
-  if (current->user_heap.free_pages_count > 0) {
-    va =  current->user_heap.free_pages_address[--current->user_heap.free_pages_count];
+  if (current->user_heap.free_pages_count > 0)
+  {
+    va = current->user_heap.free_pages_address[--current->user_heap.free_pages_count];
     assert(va < current->user_heap.heap_top);
-  } else {
+  }
+  else
+  {
     // otherwise, allocate a new page (this increases the size of the heap by one page)
     va = current->user_heap.heap_top;
     current->user_heap.heap_top += PGSIZE;
@@ -59,7 +65,7 @@ uint64 sys_user_allocate_page() {
     current->mapped_info[HEAP_SEGMENT].npages++;
   }
   user_vm_map((pagetable_t)current->pagetable, va, PGSIZE, (uint64)pa,
-         prot_to_type(PROT_WRITE | PROT_READ, 1));
+              prot_to_type(PROT_WRITE | PROT_READ, 1));
 
   return va;
 }
@@ -67,7 +73,8 @@ uint64 sys_user_allocate_page() {
 //
 // reclaim a page, indicated by "va". added @lab2_2
 //
-uint64 sys_user_free_page(uint64 va) {
+uint64 sys_user_free_page(uint64 va)
+{
   user_vm_unmap((pagetable_t)current->pagetable, va, PGSIZE, 1);
   // add the reclaimed page to the free page list
   current->user_heap.free_pages_address[current->user_heap.free_pages_count++] = va;
@@ -77,25 +84,26 @@ uint64 sys_user_free_page(uint64 va) {
 //
 // kerenl entry point of naive_fork
 //
-ssize_t sys_user_fork() {
+ssize_t sys_user_fork()
+{
   sprint("User call fork.\n");
-  return do_fork( current );
+  return do_fork(current);
 }
 
 //
 // kerenl entry point of yield. added @lab3_2
 //
-ssize_t sys_user_yield() {
+ssize_t sys_user_yield()
+{
   // TODO (lab3_2): implment the syscall of yield.
   // hint: the functionality of yield is to give up the processor. therefore,
   // we should set the status of currently running process to READY, insert it in
   // the rear of ready queue, and finally, schedule a READY process to run.
-  //panic( "You need to implement the yield syscall in lab3_2.\n" );
-  
-  // set current process to READY and insert it to ready queue
+  // panic( "You need to implement the yield syscall in lab3_2.\n" );
+
+  // sprint("User call yield");
   current->status = READY;
-  insert_to_ready_queue( current );
-  // schedule another process to run
+  insert_to_ready_queue(current);
   schedule();
   return 0;
 }
@@ -219,6 +227,18 @@ ssize_t sys_user_unlink(char * vfn){
 }
 
 //
+// lib call to exec
+//
+ssize_t sys_user_exec(char *path) {
+  // 初始化一个新的进程
+  // 加载ELF文件，将当前执行的进程切换为新的进程
+  // 返回是否执行成果
+  path = (char *)user_va_to_pa((pagetable_t)(current->pagetable), (void *)path);
+  reset_process(current);
+  return exec_bincode_from_host_elf(current, (char *)path);
+}
+
+//
 // [a0]: the syscall number; [a1] ... [a7]: arguments to the syscalls.
 // returns the code of success, (e.g., 0 means success, fail for otherwise)
 //
@@ -266,6 +286,8 @@ long do_syscall(long a0, long a1, long a2, long a3, long a4, long a5, long a6, l
       return sys_user_link((char *)a1, (char *)a2);
     case SYS_user_unlink:
       return sys_user_unlink((char *)a1);
+    case SYS_user_exec:
+      return sys_user_exec((char *)a1);
     default:
       panic("Unknown syscall %ld \n", a0);
   }
