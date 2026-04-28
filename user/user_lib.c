@@ -10,8 +10,7 @@
 #include "util/snprintf.h"
 #include "kernel/syscall.h"
 
-uint64 do_user_call(uint64 sysnum, uint64 a1, uint64 a2, uint64 a3, uint64 a4, uint64 a5, uint64 a6,
-                 uint64 a7) {
+uint64 do_user_call(uint64 sysnum, uint64 a1, uint64 a2, uint64 a3, uint64 a4, uint64 a5, uint64 a6, uint64 a7) {
   int ret;
 
   // before invoking the syscall, arguments of do_user_call are already loaded into the argument
@@ -75,6 +74,11 @@ int fork() {
 //
 void yield() {
   do_user_call(SYS_user_yield, 0, 0, 0, 0, 0, 0, 0);
+}
+
+// lib call to wait
+int wait(int pid) {
+  return do_user_call(SYS_user_wait, pid, 0, 0, 0, 0, 0, 0);
 }
 
 //
@@ -166,4 +170,12 @@ int unlink_u(const char *fn){
 //
 int close(int fd) {
   return do_user_call(SYS_user_close, fd, 0, 0, 0, 0, 0, 0);
+}
+
+// 
+// lib to exec
+//Gao Xiaoyanggggg
+//
+int exec(const char *path, char * argv) {
+  return do_user_call(SYS_user_exec, (uint64)path, (uint64)argv, 0, 0, 0, 0, 0);
 }

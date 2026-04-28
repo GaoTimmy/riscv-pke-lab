@@ -13,6 +13,8 @@ void* naive_malloc();
 void naive_free(void* va);
 int fork();
 void yield();
+//Gao Xiaoyangggggg
+int wait(int pid);
 
 // added @ lab4_1
 int open(const char *pathname, int flags);
@@ -22,6 +24,8 @@ int lseek_u(int fd, int offset, int whence);
 int stat_u(int fd, struct istat *istat);
 int disk_stat_u(int fd, struct istat *istat);
 int close(int fd);
+//Gao Xiaoyanggggg
+int exec(const char *path, char *argv);
 
 // added @ lab4_2
 int opendir_u(const char *pathname);

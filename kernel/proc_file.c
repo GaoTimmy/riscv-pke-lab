@@ -38,7 +38,7 @@ void fs_init(void) {
 // initialize a proc_file_management data structure for a process.
 // return the pointer to the page containing the data structure.
 //
-proc_file_management *init_proc_file_management(void) {
+proc_file_management *init_proc_file_management(int mode) {
   proc_file_management *pfiles = (proc_file_management *)alloc_page();
   pfiles->cwd = vfs_root_dentry; // by default, cwd is the root
   pfiles->nfiles = 0;
@@ -46,7 +46,7 @@ proc_file_management *init_proc_file_management(void) {
   for (int fd = 0; fd < MAX_FILES; ++fd)
     pfiles->opened_files[fd].status = FD_NONE;
 
-  sprint("FS: created a file management struct for a process.\n");
+  if(mode) sprint("FS: created a file management struct for a process.\n");
   return pfiles;
 }
 
@@ -106,7 +106,7 @@ int do_open(char *pathname, int flags) {
 //
 int do_read(int fd, char *buf, uint64 count) {
   struct file *pfile = get_opened_file(fd);
-
+  // sprint("do_read: fd=%d, count=%d\n", fd, count);
   if (pfile->readable == 0) panic("do_read: no readable file!\n");
 
   char buffer[count + 1];
