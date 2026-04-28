@@ -27,7 +27,7 @@ extern void return_to_user(trapframe *, uint64 satp);
 extern char trap_sec_start[];
 
 // process pool. added @lab3_1
-process procs[NPROC];
+process procs[NPROC]; //线程池
 
 // current points to the currently running user-mode application.
 process* current = NULL;
@@ -225,7 +225,7 @@ int do_fork( process* parent)
         // copy the heap manager from parent to child
         memcpy((void*)&child->user_heap, (void*)&parent->user_heap, sizeof(parent->user_heap));
         break;
-      case CODE_SEGMENT:
+      case CODE_SEGMENT:  //代码段，read only，不需要copy，直接映射即可
         // TODO (lab3_1): implment the mapping of child code segment to parent's
         // code segment.
         // hint: the virtual address mapping of code segment is tracked in mapped_info
@@ -235,8 +235,14 @@ int do_fork( process* parent)
         // address region of child to the physical pages that actually store the code
         // segment of parent process.
         // DO NOT COPY THE PHYSICAL PAGES, JUST MAP THEM.
-        panic( "You need to implement the code segment mapping of child in lab3_1.\n" );
-
+        //panic( "You need to implement the code segment mapping of child in lab3_1.\n" );
+        sprint("start mapping code segment\n");
+        uint64 size = parent->mapped_info[i].npages * PGSIZE;
+        uint64 va = parent->mapped_info[i].va;
+        uint64 pa = lookup_pa(parent->pagetable, va);
+        map_pages((pagetable_t)child->pagetable, va, size, pa,
+          prot_to_type(PROT_READ | PROT_EXEC, 1));
+        //user_vm_map((pagetable_t)child->pagetable, va, size, pa,prot_to_type(PROT_READ | PROT_EXEC, 1));
         // after mapping, register the vm region (do not delete codes below!)
         child->mapped_info[child->total_mapped_region].va = parent->mapped_info[i].va;
         child->mapped_info[child->total_mapped_region].npages =

@@ -104,7 +104,7 @@ int s_start(void) {
   init_proc_pool();
 
   // init file system, added @lab4_1
-  fs_init();
+  fs_init(); //kernel/proc_file.c
 
   sprint("Switch to user mode...\n");
   // the application code (elf) is first loaded into memory, and then put into execution
