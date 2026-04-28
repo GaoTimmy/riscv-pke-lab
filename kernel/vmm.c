@@ -26,6 +26,7 @@ int map_pages(pagetable_t page_dir, uint64 va, uint64 size, uint64 pa, int perm)
     if (*pte & PTE_V)
       panic("map_pages fails on mapping va (0x%lx) to pa (0x%lx)", first, pa);
     *pte = PA2PTE(pa) | perm | PTE_V;
+    pagecount_update((void *)pa, 1);
   }
   return 0;
 }
@@ -159,16 +160,13 @@ void *user_va_to_pa(pagetable_t page_dir, void *va) {
   // (va & (1<<PGSHIFT -1)) means computing the offset of "va" inside its page.
   // Also, it is possible that "va" is not mapped at all. in such case, we can find
   // invalid PTE, and should return NULL.
-  //panic( "You have to implement user_va_to_pa (convert user va to pa) to print messages in lab2_1.\n" );
+  uint64 page_addr = lookup_pa(page_dir, (uint64) va);
+  if (page_addr == 0) {
+    return NULL;
+  }
+  return (void *) (page_addr + ((uint64) va & ((1 << PGSHIFT) - 1)));
+  // panic( "You have to implement user_va_to_pa (convert user va to pa) to print messages in lab2_1.\n" );
 
-  //查找va对应物理页地址即PTE
-  uint64 phy_addr = lookup_pa(page_dir, (uint64)va);
-
-  //invalid PTE, and shoule return NULL
-  if (! phy_addr) return NULL;
-
-  //PTE(PPN) is the starting address
-  else return (void *)(phy_addr + ((uint64)va & ((1<<PGSHIFT) - 1)));
 }
 
 //
@@ -192,15 +190,22 @@ void user_vm_unmap(pagetable_t page_dir, uint64 va, uint64 size, int free) {
   // (use free_page() defined in pmm.c) the physical pages. lastly, invalidate the PTEs.
   // as naive_free reclaims only one page at a time, you only need to consider one page
   // to make user/app_naive_malloc to behave correctly.
-  //panic( "You have to implement user_vm_unmap to free pages using naive_free in lab2_2.\n" );
+  pte_t *pte;
 
-  //uint64 phy_addr = lookup_pa(page_dir, va);
-  //未对齐
-  //if (phy_addr && free!=0) freepage((void *)(phy_addr + ((uint64)va & ((1<<PGSHIFT) - 1))));
-  uint64 mask = (uint64)(-1) - 0x3ff;
-  pte_t *pte = page_walk(page_dir, va, 0);
-  free_page((void *)((*pte & mask) <<2));
-  *pte & ~PTE_V;
+  if ((va % PGSIZE) != 0) panic("uvmunmap: not aligned");
+
+  for (uint64 a = va; a < va + size; a += PGSIZE) {
+    if ((pte = page_walk(page_dir, a, 0)) == 0) panic("uvmunmap: walk");
+    if ((*pte & PTE_V) == 0) panic("uvmunmap: not mapped");
+    if (PTE_FLAGS(*pte) == PTE_V) panic("uvmunmap: not a leaf");
+    if (free) {
+      uint64 pa = PTE2PA(*pte);
+      free_page((void *) pa);
+    }
+    *pte = 0;
+  }
+  // panic( "You have to implement user_vm_unmap to free pages using naive_free in lab2_2.\n" );
+
 }
 
 //
@@ -220,3 +225,22 @@ void print_proc_vmspace(process* proc) {
     sprint( ", mapped to pa:%lx\n", lookup_pa(proc->pagetable, proc->mapped_info[i].va) );
   }
 }
+
+bool cowpage_assert(pagetable_t ptable, uint64 va) {
+  pte_t *pte = page_walk(ptable, va, 0);
+  if ((*pte & PTE_C) != 0) return 1;
+  return 0;
+}
+
+int cowpage_alloc(pagetable_t ptable, uint64 va) {
+  sprint("handle_page_fault: %lx\n", va);
+  pte_t *pte = page_walk(ptable, va, 0);
+  uint64 pa = lookup_pa(ptable, va);
+  uint64 copyto_pa = (uint64)alloc_page();
+  memmove((void *)copyto_pa, (void *)pa, PGSIZE);
+  *pte &= ~PTE_V;
+  map_pages(ptable, va, PGSIZE, copyto_pa, (PTE_FLAGS(*pte) | PTE_W) & (~PTE_C));
+  free_page((void *)pa);
+  return 0;
+}
+

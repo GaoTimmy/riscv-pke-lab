@@ -6,6 +6,13 @@
 #include "memlayout.h"
 #include "spike_interface/spike_utils.h"
 
+#include "spike_interface/atomic.h"
+
+#define MAX_PAGE_NUM PHYS_TOP / PGSIZE
+
+spinlock_t pagecount_lock;
+int pagecount[MAX_PAGE_NUM];
+
 // _end is defined in kernel/kernel.lds, it marks the ending (virtual) address of PKE kernel
 extern char _end[];
 // g_mem_size is defined in spike_interface/spike_memory.c, it indicates the size of our
@@ -22,14 +29,30 @@ typedef struct node {
 // g_free_mem_list is the head of the list of free physical memory pages
 static list_node g_free_mem_list;
 
+void pagecount_update(void* pa, int val) {
+  spinlock_lock(&pagecount_lock);
+  pagecount[(uint64)pa / PGSIZE] += val;
+  spinlock_unlock(&pagecount_lock);
+}
+
+int pagecount_query(void* pa) {
+  spinlock_lock(&pagecount_lock);
+  int ret = pagecount[(uint64)pa / PGSIZE];
+  spinlock_unlock(&pagecount_lock);
+  return ret;
+}
+
 //
 // actually creates the freepage list. each page occupies 4KB (PGSIZE), i.e., small page.
 // PGSIZE is defined in kernel/riscv.h, ROUNDUP is defined in util/functions.h.
 //
 static void create_freepage_list(uint64 start, uint64 end) {
   g_free_mem_list.next = 0;
-  for (uint64 p = ROUNDUP(start, PGSIZE); p + PGSIZE < end; p += PGSIZE)
-    free_page( (void *)p );
+  for (uint64 p = ROUNDUP(start, PGSIZE); p + PGSIZE < end; p += PGSIZE) {
+    // call free_page led pagecount of pa -1, so +1 before free_page
+    pagecount_update((void *)p, 1);
+    free_page((void *)p);
+  }
 }
 
 //
@@ -39,10 +62,18 @@ void free_page(void *pa) {
   if (((uint64)pa % PGSIZE) != 0 || (uint64)pa < free_mem_start_addr || (uint64)pa >= free_mem_end_addr)
     panic("free_page 0x%lx \n", pa);
 
-  // insert a physical page to g_free_mem_list
-  list_node *n = (list_node *)pa;
-  n->next = g_free_mem_list.next;
-  g_free_mem_list.next = n;
+  spinlock_lock(&pagecount_lock);
+  // ! the lock is locked, should not call pagecount_update or pagecount_query
+  // pagecount_update(pa, -1);
+  pagecount[(uint64)pa / PGSIZE] -= 1;
+  if (pagecount[(uint64)pa / PGSIZE] == 0) {
+    // insert a physical page to g_free_mem_list
+    list_node *n = (list_node *)pa;
+    n->next = g_free_mem_list.next;
+    g_free_mem_list.next = n;
+  }
+  
+  spinlock_unlock(&pagecount_lock);
 }
 
 //
@@ -51,7 +82,10 @@ void free_page(void *pa) {
 //
 void *alloc_page(void) {
   list_node *n = g_free_mem_list.next;
-  if (n) g_free_mem_list.next = n->next;
+  if (n) {
+    pagecount_update((void *)n, 1);
+    g_free_mem_list.next = n->next;
+  }
 
   return (void *)n;
 }
