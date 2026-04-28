@@ -36,24 +36,65 @@ ssize_t sys_user_exit(uint64 code) {
   shutdown(code);
 }
 
+int init = 1;
+
+void init_HMCB() {
+  current->heap_size = PGSIZE * 1024;
+  user_vm_malloc(current->pagetable, current->heap_size, sizeof(HMCB) + current->heap_size); // 分配一个控制块的空间
+  current->heap_size += sizeof(HMCB); // 当前堆的大小为一个控制块
+  HMCB *head = (HMCB *) PTE2PA(*page_walk(current->pagetable, current->heap_size, 0)); // 获取当前进程堆的头部内存控制块的物理地址
+  current->heap_head = current->heap_tail = (uint64) head; // initialize the list
+  head->size = 0, head->next = head, head->busy=1, head->offset=sizeof(HMCB); // 初始化控制块
+  init = 0;
+}
+
 //
 // maybe, the simplest implementation of malloc in the world ... added @lab2_2
 //
-uint64 sys_user_allocate_page() {
-  void* pa = alloc_page();
-  uint64 va = g_ufree_page;
-  g_ufree_page += PGSIZE;
-  user_vm_map((pagetable_t)current->pagetable, va, PGSIZE, (uint64)pa,
-         prot_to_type(PROT_WRITE | PROT_READ, 1));
+uint64 sys_user_allocate_page(uint64 size) {
+  
+  if (init) init_HMCB();
+  HMCB * cur_HMCB = (HMCB *)current->heap_head;
 
-  return va;
+  do {
+    if (!cur_HMCB->busy && cur_HMCB->size >= size) {
+      // sprint("cur_HMCB->size: %d\n", cur_HMCB->size);
+        cur_HMCB->busy = 1;
+        return cur_HMCB->offset + sizeof(HMCB);
+    }
+    // sprint("cur_HMCB->next: %d\n", cur_HMCB->next);
+    cur_HMCB = cur_HMCB->next;
+  } while (cur_HMCB != (HMCB *)current->heap_tail);
+  
+  
+  // sprint("**************\n");
+  // 插入一个物理页到链表中, 总分配大小为表项大小加分配空间大小
+uint64 allocn = (uint64) sizeof(HMCB) + size + 8;
+  uint64 size_ = current->heap_size;
+  user_vm_malloc(current->pagetable, current->heap_size, allocn + current->heap_size);
+  current->heap_size += allocn;
+  HMCB *now = (HMCB *)(PTE2PA(*page_walk(current->pagetable, size_, 0)) + (size_ & 0xfff));
+  now = (HMCB *)((uint64)now + (8 - ((uint64)now % 8))%8);
+  // set node val
+  now->busy = 1;
+  now->offset = size_;
+  now->size = size;
+  now->next = cur_HMCB->next;
+  // insert node
+  cur_HMCB->next = now;
+  cur_HMCB = (HMCB *)current->heap_head;
+  return size_ + sizeof(HMCB);
 }
 
 //
 // reclaim a page, indicated by "va". added @lab2_2
 //
-uint64 sys_user_free_page(uint64 va) {
-  user_vm_unmap((pagetable_t)current->pagetable, va, PGSIZE, 1);
+uint64 sys_user_free_page(uint64 va)
+{
+  pte_t *pte = page_walk(current->pagetable, va - sizeof(HMCB), 0);
+  HMCB *now = (HMCB *)(PTE2PA(*pte) + ((va - sizeof(HMCB)) & 0xfff));
+  now = (HMCB *)((uint64)now + (8 - ((uint64)now % 8))%8);
+  now->busy = 0;
   return 0;
 }
 
@@ -69,7 +110,7 @@ long do_syscall(long a0, long a1, long a2, long a3, long a4, long a5, long a6, l
       return sys_user_exit(a1);
     // added @lab2_2
     case SYS_user_allocate_page:
-      return sys_user_allocate_page();
+      return sys_user_allocate_page(a1);
     case SYS_user_free_page:
       return sys_user_free_page(a1);
     default:
