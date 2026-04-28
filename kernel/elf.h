@@ -5,6 +5,8 @@
 #include "process.h"
 
 #define MAX_CMDLINE_ARGS 64
+//Author: Gao Xiaoyangggg
+#define MAX_DEBUG_LINE_SIZE 10000
 
 // elf header structure
 typedef struct elf_header_t {
