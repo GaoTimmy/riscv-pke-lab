@@ -32,7 +32,7 @@ typedef struct process_t {
   // trapframe storing the context of a (User mode) process.
   trapframe* trapframe;
 
-  // added @lab1_challenge2
+  // added by Gao Xiaoyang
   char *debugline; char **dir; code_file *file; addr_line *line; int line_ind;
 }process;
 
